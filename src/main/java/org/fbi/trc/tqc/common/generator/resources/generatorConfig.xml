@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE generatorConfiguration
+        PUBLIC "-//mybatis.org//DTD MyBatis Generator Configuration 1.0//EN"
+        "http://mybatis.org/dtd/mybatis-generator-config_1_0.dtd">
+
+<generatorConfiguration>
+    <classPathEntry location="/workspace/git-linking/lib/ojdbc6.jar"/>
+
+    <!--信息 -->
+    <context id="AllInfo" targetRuntime="MyBatis3">
+        <jdbcConnection driverClass="oracle.jdbc.driver.OracleDriver"
+                        connectionURL="jdbc:oracle:thin:@localhost:1521:orcl"
+                        userId="trc"
+                        password="trc">
+        </jdbcConnection>
+
+        <javaTypeResolver>
+            <property name="forceBigDecimals" value="false"/>
+        </javaTypeResolver>
+
+        <javaModelGenerator targetPackage="org.fbi.trc.tqc.repository.model" targetProject="src/main/java">
+            <property name="enableSubPackages" value="true"/>
+            <property name="trimStrings" value="true"/>
+        </javaModelGenerator>
+
+        <sqlMapGenerator targetPackage="org.fbi.trc.tqc.repository.mapper" targetProject="src/main/java">
+            <property name="enableSubPackages" value="true"/>
+        </sqlMapGenerator>
+
+        <javaClientGenerator type="XMLMAPPER" targetPackage="org.fbi.trc.tqc.repository.dao" targetProject="src/main/java">
+            <property name="enableSubPackages" value="true"/>
+        </javaClientGenerator>
+
+
+        <!--交易风险控制之 交易限额控制 -->
+<!--
+        <table schema="trc" tableName="tqc_quota_acct">
+            <property name="ignoreQualifiersAtRuntime" value="true"/>
+        </table>
+        <table schema="trc" tableName="tqc_quota_acct_his">
+            <property name="ignoreQualifiersAtRuntime" value="true"/>
+            <generatedKey column="pkid" sqlStatement="select sys_guid() from dual" identity="false"/>
+        </table>
+        <table schema="trc" tableName="tqc_quota_mcht">
+            <property name="ignoreQualifiersAtRuntime" value="true"/>
+        </table>
+        <table schema="trc" tableName="tqc_quota_mcht_his">
+            <property name="ignoreQualifiersAtRuntime" value="true"/>
+            <generatedKey column="pkid" sqlStatement="select sys_guid() from dual" identity="false"/>
+        </table>
+        <table schema="trc" tableName="tqc_rule_acct">
+            <property name="ignoreQualifiersAtRuntime" value="true"/>
+        </table>
+        <table schema="trc" tableName="tqc_rule_area">
+            <property name="ignoreQualifiersAtRuntime" value="true"/>
+        </table>
+        <table schema="trc" tableName="tqc_rule_mcht">
+            <property name="ignoreQualifiersAtRuntime" value="true"/>
+        </table>
+        <table schema="trc" tableName="tqc_rule_pub">
+            <property name="ignoreQualifiersAtRuntime" value="true"/>
+        </table>
+        <table schema="trc" tableName="tqc_txn_acct">
+            <property name="ignoreQualifiersAtRuntime" value="true"/>
+            <generatedKey column="pkid" sqlStatement="select sys_guid() from dual" identity="false"/>
+        </table>
+        <table schema="trc" tableName="tqc_txn_mcht">
+            <property name="ignoreQualifiersAtRuntime" value="true"/>
+            <generatedKey column="pkid" sqlStatement="select sys_guid() from dual" identity="false"/>
+        </table>
+-->
+
+    </context>
+</generatorConfiguration>

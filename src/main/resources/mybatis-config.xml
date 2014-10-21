@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE configuration
+    PUBLIC "-//mybatis.org//DTD Config 3.0//EN"
+    "http://mybatis.org/dtd/mybatis-3-config.dtd">
+
+<configuration>
+    <properties resource="db.properties"/>
+
+    <environments default="development">
+        <environment id="${environment}">
+            <transactionManager type="${transaction}"/>
+            <dataSource type="${pool}">
+                <property name="driver" value="${ConnectionManager.driver}"/>
+                <property name="url" value="${ConnectionManager.connection}"/>
+                <property name="username" value="${ConnectionManager.user}"/>
+                <property name="password" value="${ConnectionManager.password}"/>
+            </dataSource>
+        </environment>
+    </environments>
+    <mappers>
+        <mapper resource="org/fbi/trc/tqc/repository/mapper/TqcQuotaAcctHisMapper.xml"/>
+        <mapper resource="org/fbi/trc/tqc/repository/mapper/TqcQuotaAcctMapper.xml"/>
+        <mapper resource="org/fbi/trc/tqc/repository/mapper/TqcQuotaMchtHisMapper.xml"/>
+        <mapper resource="org/fbi/trc/tqc/repository/mapper/TqcQuotaMchtMapper.xml"/>
+        <mapper resource="org/fbi/trc/tqc/repository/mapper/TqcRuleAcctMapper.xml"/>
+        <mapper resource="org/fbi/trc/tqc/repository/mapper/TqcRuleAreaMapper.xml"/>
+        <mapper resource="org/fbi/trc/tqc/repository/mapper/TqcRuleMchtMapper.xml"/>
+        <mapper resource="org/fbi/trc/tqc/repository/mapper/TqcRulePubMapper.xml"/>
+        <mapper resource="org/fbi/trc/tqc/repository/mapper/TqcTxnAcctMapper.xml"/>
+        <mapper resource="org/fbi/trc/tqc/repository/mapper/TqcTxnMchtMapper.xml"/>
+    </mappers>
+
+</configuration>
