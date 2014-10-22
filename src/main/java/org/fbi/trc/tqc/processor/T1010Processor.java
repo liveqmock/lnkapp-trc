@@ -11,6 +11,7 @@ import org.fbi.linking.processor.standprotocol10.Stdp10ProcessorResponse;
 import org.fbi.trc.tqc.domain.cbs.T1010Request.CbsTia1010;
 import org.fbi.trc.tqc.domain.cbs.T1010Response.CbsToa1010;
 import org.fbi.trc.tqc.enums.TxnRtnCode;
+import org.fbi.trc.tqc.helper.FbiBeanUtils;
 import org.fbi.trc.tqc.helper.MybatisFactory;
 import org.fbi.trc.tqc.repository.dao.*;
 import org.fbi.trc.tqc.repository.model.*;
@@ -33,7 +34,7 @@ public class T1010Processor extends AbstractTxnProcessor {
 
     @Override
     protected void doRequest(Stdp10ProcessorRequest request, Stdp10ProcessorResponse response) throws ProcessorException, IOException {
-        String txnDate = request.getHeader("txnDate");
+        String txnDate = request.getHeader("txnTime").substring(0,8);
         String hostTxnsn = request.getHeader("serialNo");
 
         CbsTia1010 tia;
@@ -151,7 +152,7 @@ public class T1010Processor extends AbstractTxnProcessor {
 
             //¼ÇÁ÷Ë®
             insertTxnRecord(session, tia, quota, txnDate, hostTxnsn, cbsRtnInfo);
-
+            session.commit();
             return cbsRtnInfo;
         } catch (Exception e) {
             if (session != null) {
@@ -178,18 +179,10 @@ public class T1010Processor extends AbstractTxnProcessor {
             if (rulePub == null) {
                 return null;
             } else {
-                ruleInfo.setSingleLim(rulePub.getSingleLim());
-                ruleInfo.setDayAmtLim(rulePub.getDayAmtLim());
-                ruleInfo.setMonthAmtLim(rulePub.getMonthAmtLim());
-                ruleInfo.setDayCntLim(rulePub.getDayCntLim());
-                ruleInfo.setMonthCntLim(rulePub.getMonthCntLim());
+                FbiBeanUtils.copyProperties(rulePub, ruleInfo);
             }
         } else {
-            ruleInfo.setSingleLim(rule.getSingleLim());
-            ruleInfo.setDayAmtLim(rule.getDayAmtLim());
-            ruleInfo.setMonthAmtLim(rule.getMonthAmtLim());
-            ruleInfo.setDayCntLim(rule.getDayCntLim());
-            ruleInfo.setMonthCntLim(rule.getMonthCntLim());
+            FbiBeanUtils.copyProperties(rule, ruleInfo);
         }
         return ruleInfo;
     }

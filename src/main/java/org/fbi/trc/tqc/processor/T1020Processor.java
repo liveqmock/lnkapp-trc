@@ -34,7 +34,7 @@ public class T1020Processor extends AbstractTxnProcessor {
 
     @Override
     protected void doRequest(Stdp10ProcessorRequest request, Stdp10ProcessorResponse response) throws ProcessorException, IOException {
-        String txnDate = request.getHeader("txnDate");
+        String txnDate = request.getHeader("txnTime").substring(0, 8);
         String hostTxnsn = request.getHeader("serialNo");
 
         CbsTia1020 tia;
@@ -99,7 +99,9 @@ public class T1020Processor extends AbstractTxnProcessor {
         SqlSessionFactory sqlSessionFactory = null;
         SqlSession session = null;
         try {
+            long start = System.nanoTime();
             sqlSessionFactory = MybatisFactory.ORACLE.getInstance();
+            logger.info("数据库实例获取耗时:" + (System.nanoTime() - start) + "ns");
             session = sqlSessionFactory.openSession();
             session.getConnection().setAutoCommit(false);
 
@@ -151,7 +153,7 @@ public class T1020Processor extends AbstractTxnProcessor {
 
             //记流水
             insertTxnRecord(session, tia, quota, txnDate, hostTxnsn, cbsRtnInfo);
-
+            session.commit();
             return cbsRtnInfo;
         } catch (Exception e) {
             if (session != null) {
@@ -183,6 +185,9 @@ public class T1020Processor extends AbstractTxnProcessor {
                 String useAreaFlag = rule.getAreaRuleFlag();
                 if ("1".equals(useAreaFlag)) { //使用行业领域
                     TqcRuleArea ruleArea = selectAreaRule(session, rule.getAreaCode());
+                    if (ruleArea == null) {
+                        return null;
+                    }
                     FbiBeanUtils.copyProperties(ruleArea, ruleInfo);
                 } else {
                     FbiBeanUtils.copyProperties(rule, ruleInfo);
@@ -251,6 +256,7 @@ public class T1020Processor extends AbstractTxnProcessor {
         TqcQuotaAcctKey key = new TqcQuotaAcctKey();
         key.setMchtCode(tia.getMchtCode());
         key.setPrjCode(tia.getPrjCode());
+        key.setAcctNo(tia.getAcctNo());
         TqcQuotaAcct quota = quotaMapper.selectByPrimaryKey(key);
         if (quota == null) { //第一笔
             quota = new TqcQuotaAcct();
@@ -286,6 +292,7 @@ public class T1020Processor extends AbstractTxnProcessor {
         TqcTxnAcct txn = new TqcTxnAcct();
         txn.setTxnDate(txnDate);
         txn.setTxnSeqno(hostTxnsn);
+        txn.setVchSn(tia.getVchSn());
         txn.setMchtCode(tia.getMchtCode());
         txn.setPrjCode(tia.getPrjCode());
         txn.setAcctNo(tia.getAcctNo());

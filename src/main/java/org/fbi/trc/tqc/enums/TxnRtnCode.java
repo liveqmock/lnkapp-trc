@@ -6,7 +6,6 @@ import java.util.Hashtable;
  * 业务交易返回码
  */
 public enum TxnRtnCode implements EnumApp {
-
     TXN_SUCCESS("0000", "处理完成,检查通过."),
     QUOTA_CHK_ERR_SINGLE_AMT("1001", "金额超单笔限额"),
     QUOTA_CHK_ERR_DAY_AMT("1002", "金额超日限额"),

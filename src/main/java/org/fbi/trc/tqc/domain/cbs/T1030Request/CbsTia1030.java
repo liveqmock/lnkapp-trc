@@ -16,7 +16,7 @@ public class CbsTia1030 {
     @DataField(seq = 4)
     private String prjCode;
     @DataField(seq = 5)
-    private int txnCnt;
+    private String txnCnt;
     @DataField(seq = 6)
     private BigDecimal txnAmt;
     @DataField(seq = 7)
@@ -62,11 +62,11 @@ public class CbsTia1030 {
         this.vchSn = vchSn;
     }
 
-    public int getTxnCnt() {
+    public String getTxnCnt() {
         return txnCnt;
     }
 
-    public void setTxnCnt(int txnCnt) {
+    public void setTxnCnt(String txnCnt) {
         this.txnCnt = txnCnt;
     }
 
