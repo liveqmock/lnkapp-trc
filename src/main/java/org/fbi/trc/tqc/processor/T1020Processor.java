@@ -27,7 +27,7 @@ import java.util.Map;
 
 /**
  * Created by zhanrui on 2014-10-20.
- * 1071020按账号进行限额验证 并进行交易限额累计
+ * 1071020按账号进行限额验证
  */
 public class T1020Processor extends AbstractTxnProcessor {
     private Logger logger = LoggerFactory.getLogger(this.getClass());
@@ -78,7 +78,6 @@ public class T1020Processor extends AbstractTxnProcessor {
     //生成特色平台响应报文
     private String marshalCbsResponseMsg(String acctNo, String rtnMsg) {
         CbsToa1020 cbsToa = new CbsToa1020();
-        cbsToa.setAcctNo(acctNo);
         cbsToa.setRtnMsg(rtnMsg);
 
         String cbsRespMsg = "";
@@ -116,20 +115,17 @@ public class T1020Processor extends AbstractTxnProcessor {
 
             //获取当前累计表数据，不存在则新增一笔。
             TqcQuotaAcct quota = selectAndInitQuota(session, tia, txnDate);
+            BigDecimal quotaDayAmt = quota.getTxnDayAmt();
+            BigDecimal quotaMonthAmt = quota.getTxnMonthAmt();
+
             BigDecimal txnAmt = tia.getTxnAmt();
             if (!txnDate.equals(quota.getTxnDate())) { //日期不同
+                quotaDayAmt = new BigDecimal("0");
+                if (!txnDate.substring(0, 6).equals(quota.getTxnDate().substring(0, 6))) { //非同年同月
+                    quotaMonthAmt = new BigDecimal("0");
+                }
                 //处理历史表
                 insertHistoryRecord(session, quota);
-
-                //重置quato数据
-                quota.setTxnDate(txnDate);
-                quota.setTxnDayAmt(new BigDecimal("0"));
-                quota.setTxnDayCnt(0);
-                if (!txnDate.substring(0, 6).equals(quota.getTxnDate().substring(0, 6))) { //非同年同月
-                    quota.setTxnMonthAmt(new BigDecimal("0"));
-                    quota.setTxnMonthCnt(0);
-                }
-
             }
 
             //根据规则进行验证
@@ -138,16 +134,17 @@ public class T1020Processor extends AbstractTxnProcessor {
             if (txnAmt.compareTo(ruleInfo.getSingleLim()) == 1) {
                 rtnCode = TxnRtnCode.QUOTA_CHK_ERR_SINGLE_AMT;
                 msg = "[01]超单笔限额.";
-            } else if (quota.getTxnDayAmt().add(txnAmt).compareTo(ruleInfo.getDayAmtLim()) == 1) {
+            } else if (quotaDayAmt.add(txnAmt).compareTo(ruleInfo.getDayAmtLim()) == 1) {
                 rtnCode = TxnRtnCode.QUOTA_CHK_ERR_DAY_AMT;
                 msg = "[02]超日限额.";
-            } else if (quota.getTxnMonthAmt().add(txnAmt).compareTo(ruleInfo.getMonthAmtLim()) == 1) {
+            } else if (quotaMonthAmt.add(txnAmt).compareTo(ruleInfo.getMonthAmtLim()) == 1) {
                 rtnCode = TxnRtnCode.QUOTA_CHK_ERR_MONTH_AMT;
                 msg = "[03]超月限额.";
             } else {
                 //检查通过  更新限额表!
                 rtnCode = TxnRtnCode.TXN_SUCCESS;
-                updateQuota(session, quota, txnAmt, txnDate);
+                msg = "处理完成,检查通过.";
+                //updateQuota(session, quota, txnAmt, txnDate);
             }
 
             //组返回信息
@@ -283,6 +280,9 @@ public class T1020Processor extends AbstractTxnProcessor {
         quota.setTxnMonthAmt(quota.getTxnMonthAmt().add(txnAmt));
         quota.setTxnDayCnt(quota.getTxnDayCnt() + 1);
         quota.setTxnMonthCnt(quota.getTxnMonthCnt() + 1);
+        if (!txnDate.equals(quota.getTxnDate())) { //日期相同
+            quota.setTxnDate(txnDate);
+        }
         session.getMapper(TqcQuotaAcctMapper.class).updateByPrimaryKey(quota);
     }
 

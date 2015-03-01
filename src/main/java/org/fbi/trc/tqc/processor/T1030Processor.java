@@ -8,6 +8,7 @@ import org.fbi.linking.processor.ProcessorException;
 import org.fbi.linking.processor.standprotocol10.Stdp10ProcessorRequest;
 import org.fbi.linking.processor.standprotocol10.Stdp10ProcessorResponse;
 import org.fbi.trc.tqc.domain.cbs.T1030Request.CbsTia1030;
+import org.fbi.trc.tqc.domain.cbs.T1030Response.CbsToa1030;
 import org.fbi.trc.tqc.enums.TxnRtnCode;
 import org.fbi.trc.tqc.helper.MybatisFactory;
 import org.fbi.trc.tqc.helper.ProjectConfigManager;
@@ -22,9 +23,7 @@ import org.slf4j.LoggerFactory;
 import java.io.*;
 import java.math.BigDecimal;
 import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.List;
+import java.util.*;
 
 /**
  * Created by zhanrui on 2014-10-20.
@@ -62,7 +61,9 @@ public class T1030Processor extends AbstractTxnProcessor {
             return;
         }
         //FTP文件检查  总分核对 并与流水总金额比对！
-        //TODO
+
+
+        //是否重复交易
 
         //业务逻辑处理
         CbsRtnInfo cbsRtnInfo = null;
@@ -70,9 +71,9 @@ public class T1030Processor extends AbstractTxnProcessor {
             cbsRtnInfo = processTxn(tia, txnDate, hostTxnsn, bookInfos);
             //特色平台响应
             response.setHeader("rtnCode", cbsRtnInfo.getRtnCode().getCode());
-            String cbsRespMsg = cbsRtnInfo.getRtnMsg();
+            String cbsRespMsg = marshalCbsResponseMsg(tia.getAcctNo(), cbsRtnInfo.getRtnMsg());
             response.setResponseBody(cbsRespMsg.getBytes(response.getCharacterEncoding()));
-        } catch (Exception e) {
+         } catch (Exception e) {
             logger.error("[sn=" + hostTxnsn + "] " + "交易处理异常.", e);
             throw new RuntimeException("交易处理异常");
         }
@@ -113,38 +114,34 @@ public class T1030Processor extends AbstractTxnProcessor {
             //检查重复交易
             if (isRepeatTxn(session,tia,txnDate)) {
                 cbsRtnInfo.setRtnCode(TxnRtnCode.FTP_FILE_REPEAT);
-                cbsRtnInfo.setRtnMsg(TxnRtnCode.FTP_FILE_REPEAT.getTitle());
+                cbsRtnInfo.setRtnMsg("交易重复,此凭证结果已处理.");
                 return cbsRtnInfo;
             }
 
             for (HostBookInfo bookInfo : bookInfos) {
                 count++;
-
-                //更新ACCT流水表   交易日期+流水号 唯一确定一笔  update主机记账结果信息
-                String chkStatus = updateAcctTxn(session, bookInfo, sdf);
-
-                if ("1".equals(bookInfo.getBookStatus())) {//主机记账成功
+                if ("1".equals(bookInfo.getBookStatus())) {//记账成功
                     mchtBookSuccAmt = mchtBookSuccAmt.add(bookInfo.getTxnAmt());
                     mchtBookSuccCnt++;
+                    updateAcctQuota(session, tia, bookInfo);
                 } else {
-                    //限额验证通过 但主机不成功的情况
-                    if ("1".equals(chkStatus)) {
-                        mchtBookFailAmt = mchtBookFailAmt.add(bookInfo.getTxnAmt());
-                        mchtBookFailCnt++;
-                        //更新ACCT限额表，即：主机记账失败需要做冲回处理
-                        updateAcctQuotaForFail(session, tia, bookInfo);
-                    }
+                    mchtBookFailAmt = mchtBookFailAmt.add(bookInfo.getTxnAmt());
+                    mchtBookFailCnt++;
                 }
+
+                //ACCT流水表   交易日期+流水号 唯一确定一笔
+                updateAcctTxn(session, bookInfo, sdf);
             }
 
-            //更新商户限额累计数据  因存在主机记账不成功的情况，需冲回
-            updateMchtQuotaForFail(session, tia, txnDate, mchtBookFailAmt, mchtBookFailCnt);
+            //更新mcht quota数据
+            updateMchtQuota(session, tia, txnDate, mchtBookSuccAmt, mchtBookSuccCnt);
 
-            //更新商户流水数据
+            //更新mcht流水数据
             updateMchtTxn(session, tia, txnDate, mchtBookSuccAmt, mchtBookFailAmt, mchtBookSuccCnt, mchtBookFailCnt, count, sdf);
 
             //组返回信息
             cbsRtnInfo.setRtnCode(TxnRtnCode.TXN_SUCCESS);
+            cbsRtnInfo.setRtnMsg("接收扣款文件成功!");
             session.commit();
             return cbsRtnInfo;
         } catch (Exception e) {
@@ -154,6 +151,7 @@ public class T1030Processor extends AbstractTxnProcessor {
             String msg = "[sn=" + hostTxnsn + "] " + "数据库处理失败。";
             logger.error(msg, e);
             cbsRtnInfo.setRtnCode(TxnRtnCode.TXN_ERR);
+            cbsRtnInfo.setRtnMsg("交易处理失败");
             return cbsRtnInfo;
         } finally {
             if (session != null) {
@@ -213,8 +211,8 @@ public class T1030Processor extends AbstractTxnProcessor {
         }
     }
 
-    //更新账号限额累计表 （主机记账失败 做冲回处理）
-    private void updateAcctQuotaForFail(SqlSession session, CbsTia1030 tia, HostBookInfo bookInfo) {
+    //更新账号限额累计表
+    private void updateAcctQuota(SqlSession session, CbsTia1030 tia, HostBookInfo bookInfo) {
         TqcQuotaAcctMapper quotaAcctMapper = session.getMapper(TqcQuotaAcctMapper.class);
         TqcQuotaAcctKey quotaAcctKey = new TqcQuotaAcctKey();
         quotaAcctKey.setMchtCode(tia.getMchtCode());
@@ -224,39 +222,52 @@ public class T1030Processor extends AbstractTxnProcessor {
         if (quotaAcct == null) {
             throw new RuntimeException("FTP 结果文件中明细记录的账号有误");
         } else {
-            quotaAcct.setTxnDayAmt(quotaAcct.getTxnDayAmt().subtract(bookInfo.getTxnAmt()));
-            quotaAcct.setTxnMonthAmt(quotaAcct.getTxnMonthAmt().subtract(bookInfo.getTxnAmt()));
-            quotaAcct.setTxnDayCnt(quotaAcct.getTxnDayCnt() - 1);
-            quotaAcct.setTxnMonthCnt(quotaAcct.getTxnMonthCnt() - 1);
+            String bookDate = bookInfo.getTxnDate();
+            if (quotaAcct.getTxnDate().equals(bookDate)) { //同一天
+                quotaAcct.setTxnDayAmt(quotaAcct.getTxnDayAmt().add(bookInfo.getTxnAmt()));
+                quotaAcct.setTxnMonthAmt(quotaAcct.getTxnMonthAmt().add(bookInfo.getTxnAmt()));
+                quotaAcct.setTxnDayCnt(quotaAcct.getTxnDayCnt() + 1);
+                quotaAcct.setTxnMonthCnt(quotaAcct.getTxnMonthCnt() + 1);
+            } else {
+                quotaAcct.setTxnDayAmt(bookInfo.getTxnAmt());
+                quotaAcct.setTxnDayCnt(1);
+                if (!quotaAcct.getTxnDate().substring(0, 6).equals(bookDate.substring(0, 6))) { //非同年同月
+                    quotaAcct.setTxnMonthAmt(bookInfo.getTxnAmt());
+                    quotaAcct.setTxnMonthCnt(1);
+                } else {
+                    quotaAcct.setTxnMonthAmt(quotaAcct.getTxnMonthAmt().add(bookInfo.getTxnAmt()));
+                    quotaAcct.setTxnMonthCnt(quotaAcct.getTxnMonthCnt() + 1);
+                }
+            }
+            quotaAcct.setTxnDate(bookDate);
+            quotaAcctMapper.updateByPrimaryKey(quotaAcct);
         }
-        quotaAcctMapper.updateByPrimaryKey(quotaAcct);
     }
 
     //更新账号流水表
-    private String updateAcctTxn(SqlSession session, HostBookInfo bookInfo, SimpleDateFormat sdf) {
+    private void updateAcctTxn(SqlSession session, HostBookInfo bookInfo, SimpleDateFormat sdf) {
         TqcTxnAcctMapper txnAcctMapper = session.getMapper(TqcTxnAcctMapper.class);
         TqcTxnAcctExample txnAcctExample = new TqcTxnAcctExample();
         txnAcctExample.createCriteria().andTxnDateEqualTo(bookInfo.getTxnDate()).andTxnSeqnoEqualTo(bookInfo.getTxnSn());
         List<TqcTxnAcct> txnAccts = txnAcctMapper.selectByExample(txnAcctExample);
         if (txnAccts.size() == 1) {
             TqcTxnAcct txn = txnAccts.get(0);
-            if ("0".equals(txn.getChkStatus())) { //限额验证未通过
+            if ("0".equals(txn.getChkStatus())) { //未验证通过
                 if ("1".equals(bookInfo.getBookStatus())) {//主机记账成功
                     throw new RuntimeException("流水表状态与FTP文件状态不一致。pkid=" + txn.getPkid());
                 }
-            } else { //只对限额验证通过的流水进行状态更新
+            } else { //只对验证通过的流水进行状态更新
                 txn.setBookFlag(bookInfo.getBookStatus());
                 txn.setBookTime(sdf.format(new Date()));
                 txnAcctMapper.updateByPrimaryKey(txn);
             }
-            return txn.getChkStatus();
         } else {
             throw new RuntimeException("TqcTxnAcct数据不唯一");
         }
     }
 
     //更新 单位限额累计表
-    private void updateMchtQuotaForFail(SqlSession session, CbsTia1030 tia, String txnDate, BigDecimal mchtBookSuccAmt, int mchtBookSuccCnt) {
+    private void updateMchtQuota(SqlSession session, CbsTia1030 tia, String txnDate, BigDecimal mchtBookSuccAmt, int mchtBookSuccCnt) {
         TqcQuotaMchtMapper quotaMchtMapper = session.getMapper(TqcQuotaMchtMapper.class);
         TqcQuotaMchtKey quotaMchtKey = new TqcQuotaMchtKey();
         quotaMchtKey.setMchtCode(tia.getMchtCode());
@@ -265,10 +276,23 @@ public class T1030Processor extends AbstractTxnProcessor {
         if (quotaMcht == null) {
             throw new RuntimeException("更新mcht quota数据错误");
         } else {
-            quotaMcht.setTxnDayAmt(quotaMcht.getTxnDayAmt().subtract(mchtBookSuccAmt));
-            quotaMcht.setTxnMonthAmt(quotaMcht.getTxnMonthAmt().subtract(mchtBookSuccAmt));
-            quotaMcht.setTxnDayCnt(quotaMcht.getTxnDayCnt() - mchtBookSuccCnt);
-            quotaMcht.setTxnMonthCnt(quotaMcht.getTxnMonthCnt() - mchtBookSuccCnt);
+            if (txnDate.equals(quotaMcht.getTxnDate())) {
+                quotaMcht.setTxnDayAmt(quotaMcht.getTxnDayAmt().add(mchtBookSuccAmt));
+                quotaMcht.setTxnMonthAmt(quotaMcht.getTxnMonthAmt().add(mchtBookSuccAmt));
+                quotaMcht.setTxnDayCnt(quotaMcht.getTxnDayCnt() + mchtBookSuccCnt);
+                quotaMcht.setTxnMonthCnt(quotaMcht.getTxnMonthCnt() + mchtBookSuccCnt);
+            } else {
+                quotaMcht.setTxnDayAmt(mchtBookSuccAmt);
+                quotaMcht.setTxnDayCnt(mchtBookSuccCnt);
+                if (!quotaMcht.getTxnDate().substring(0, 6).equals(txnDate.substring(0, 6))) { //非同年同月
+                    quotaMcht.setTxnMonthAmt(mchtBookSuccAmt);
+                    quotaMcht.setTxnMonthCnt(mchtBookSuccCnt);
+                } else {
+                    quotaMcht.setTxnMonthAmt(quotaMcht.getTxnMonthAmt().add(mchtBookSuccAmt));
+                    quotaMcht.setTxnMonthCnt(quotaMcht.getTxnMonthCnt() + mchtBookSuccCnt);
+                }
+            }
+            quotaMcht.setTxnDate(txnDate);
             quotaMchtMapper.updateByPrimaryKey(quotaMcht);
         }
     }
@@ -294,8 +318,7 @@ public class T1030Processor extends AbstractTxnProcessor {
             txnMcht = txnMchts.get(0);
             txnMcht.setTxnCnt(count);
             txnMcht.setBookTime(sdf.format(new Date()));
-            txnMcht.setBookFlag("1");  //主机处理完成（1030交易完成标志）
-            //记录主机记账情况：注意失败是指主机记账失败
+            txnMcht.setBookFlag("1");
             txnMcht.setTxnSuccAmt(mchtBookSuccAmt);
             txnMcht.setTxnSuccCnt(mchtBookSuccCnt);
             txnMcht.setTxnFailAmt(mchtBookFailAmt);
@@ -303,5 +326,22 @@ public class T1030Processor extends AbstractTxnProcessor {
             txnMchtMapper.updateByPrimaryKey(txnMcht);
         }
     }
+    //生成特色平台响应报文
+    private String marshalCbsResponseMsg(String acctNo, String rtnMsg) {
+        CbsToa1030 cbsToa = new CbsToa1030();
+        cbsToa.setRtnMsg(rtnMsg);
+
+        String cbsRespMsg = "";
+        Map<String, Object> modelObjectsMap = new HashMap<String, Object>();
+        modelObjectsMap.put(cbsToa.getClass().getName(), cbsToa);
+        SeperatedTextDataFormat cbsDataFormat = new SeperatedTextDataFormat(cbsToa.getClass().getPackage().getName());
+        try {
+            cbsRespMsg = (String) cbsDataFormat.toMessage(modelObjectsMap);
+        } catch (Exception e) {
+            throw new RuntimeException("特色平台报文转换失败.", e);
+        }
+        return cbsRespMsg;
+    }
+
 
 }
